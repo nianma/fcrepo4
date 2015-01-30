@@ -163,7 +163,7 @@ public class RdfStream extends ForwardingIterator<Triple> implements Stream<Trip
      * @return proffered Triples with the context of this RDFStream
      */
     public <Tr extends Triple, T extends Iterator<Tr>> RdfStream withThisContext(final T stream) {
-        return new RdfStream(stream).namespaces(namespaces()).topic(topic());
+        return new RdfStream(stream).namespaces(namespaces()).topic(topic()).session(session());
     }
 
     /**
@@ -172,7 +172,7 @@ public class RdfStream extends ForwardingIterator<Triple> implements Stream<Trip
      * @return an empty RdfStream with the context of this RDFStream
      */
     public RdfStream withThisContext() {
-        return new RdfStream().namespaces(namespaces()).topic(topic());
+        return new RdfStream().namespaces(namespaces()).topic(topic()).session(session());
     }
 
     /**
@@ -182,7 +182,7 @@ public class RdfStream extends ForwardingIterator<Triple> implements Stream<Trip
      * @return proffered Triples with the context of this RDFStream
      */
     public <Tr extends Triple, T extends Iterable<Tr>> RdfStream withThisContext(final T stream) {
-        return new RdfStream(stream).namespaces(namespaces()).topic(topic());
+        return new RdfStream(stream).namespaces(namespaces()).topic(topic()).session(session());
     }
 
     /**
