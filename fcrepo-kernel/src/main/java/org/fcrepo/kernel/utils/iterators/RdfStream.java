@@ -15,35 +15,23 @@
  */
 package org.fcrepo.kernel.utils.iterators;
 
-import static com.google.common.base.Objects.equal;
-import static com.google.common.collect.ImmutableSet.copyOf;
-import static com.google.common.collect.Iterators.advance;
-import static com.google.common.collect.Iterators.singletonIterator;
-import static com.google.common.collect.Lists.newArrayList;
 import static com.google.common.collect.Sets.newHashSet;
+import static com.hp.hpl.jena.graph.Node.ANY;
 import static com.hp.hpl.jena.rdf.model.ModelFactory.createDefaultModel;
+import static java.util.Arrays.stream;
 import static java.util.Objects.hash;
-import static java.util.Optional.empty;
 import static java.util.Spliterators.spliteratorUnknownSize;
-import static java.util.stream.StreamSupport.doubleStream;
-import static java.util.stream.StreamSupport.intStream;
-import static java.util.stream.StreamSupport.longStream;
 import static java.util.stream.StreamSupport.stream;
-import static org.fcrepo.kernel.utils.GuavaConversions.guavaFunction;
-import static org.fcrepo.kernel.utils.GuavaConversions.guavaPredicate;
 
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
-import java.util.List;
 import java.util.Map;
-import java.util.NoSuchElementException;
+import java.util.Objects;
 import java.util.Optional;
-import java.util.PrimitiveIterator;
 import java.util.Spliterator;
-import java.util.TreeSet;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.BinaryOperator;
@@ -58,17 +46,14 @@ import java.util.stream.DoubleStream;
 import java.util.stream.IntStream;
 import java.util.stream.LongStream;
 import java.util.stream.Stream;
+
 import javax.jcr.Session;
 
-import com.google.common.base.Function;
-import com.google.common.base.Predicate;
-import com.google.common.collect.ForwardingIterator;
-import com.google.common.collect.Iterators;
-import com.google.common.collect.Ordering;
+import com.google.common.collect.Sets;
 import com.hp.hpl.jena.graph.Node;
 import com.hp.hpl.jena.graph.Triple;
 import com.hp.hpl.jena.rdf.model.Model;
-import com.hp.hpl.jena.rdf.model.Statement;
+import com.hp.hpl.jena.util.iterator.ExtendedIterator;
 
 /**
  * A stream of RDF triples along with some useful context.
@@ -76,19 +61,33 @@ import com.hp.hpl.jena.rdf.model.Statement;
  * @author ajs6f
  * @since Oct 9, 2013
  */
-public class RdfStream extends ForwardingIterator<Triple> implements Stream<Triple> {
+public class RdfStream implements Stream<Triple> {
 
     private final Map<String, String> namespaces = new HashMap<>();
 
-    protected Iterator<Triple> triples;
+    protected Stream<? extends Triple> triples;
 
     protected Session context;
 
     protected Node topic;
 
-    protected List<Runnable> closers = new ArrayList<>();
+    /**
+     * Constructor that begins the stream with proffered triples.
+     *
+     * @param triples
+     */
+    public <Tr extends Triple, T extends Stream<Tr>> RdfStream(final T triples) {
+        this.triples = triples;
+    }
 
-    private static final Triple[] NONE = new Triple[] {};
+    /**
+     * Constructor that begins the stream with proffered triples.
+     *
+     * @param triples
+     */
+    public <Tr extends Triple, T extends Spliterator<Tr>> RdfStream(final T triples) {
+        this(stream(() -> triples, triples.characteristics(), true));
+    }
 
     /**
      * Constructor that begins the stream with proffered triples.
@@ -96,8 +95,7 @@ public class RdfStream extends ForwardingIterator<Triple> implements Stream<Trip
      * @param triples
      */
     public <Tr extends Triple, T extends Iterator<Tr>> RdfStream(final T triples) {
-        super();
-        this.triples = Iterators.transform(triples, cast());
+        this(spliteratorUnknownSize(triples, 0));
     }
 
     /**
@@ -106,7 +104,7 @@ public class RdfStream extends ForwardingIterator<Triple> implements Stream<Trip
      * @param triples
      */
     public <Tr extends Triple, T extends Iterable<Tr>> RdfStream(final T triples) {
-        this(triples.iterator());
+        this(triples.spliterator());
     }
 
     /**
@@ -114,9 +112,8 @@ public class RdfStream extends ForwardingIterator<Triple> implements Stream<Trip
      *
      * @param triples
      */
-    public <Tr extends Triple, T extends Collection<Tr>> RdfStream(
-            final T triples) {
-        this(triples.iterator());
+    public <Tr extends Triple, T extends Collection<Tr>> RdfStream(final T triples) {
+        this(triples.stream());
     }
 
     /**
@@ -126,34 +123,28 @@ public class RdfStream extends ForwardingIterator<Triple> implements Stream<Trip
      */
     @SafeVarargs
     public <T extends Triple> RdfStream(final T... triples) {
-        this(Iterators.forArray(triples));
+        this(stream(triples));
     }
 
+
     /**
-     * Constructor that begins the stream with proffered statements.
+     * Returns a new {@link RdfStream} with proffered triples and the context of this RdfStream.
      *
-     * @param statements
+     * @param triples
+     * @return an RdfStream with the context of this RDFStream
      */
-    @SafeVarargs
-    public <T extends Statement> RdfStream(final T... statements) {
-        this(Iterators.transform(Iterators.forArray(statements),
-                statement2triple));
+    public <T extends Triple> RdfStream withThisContext(@SuppressWarnings("unchecked") final T... triples) {
+        return new RdfStream(triples).namespaces(namespaces()).topic(topic()).session(session());
     }
 
     /**
-     * Constructor that begins the stream with proffered triple.
+     * Returns the proffered {@link Triple}s with the context of this RdfStream.
      *
-     * @param triple
+     * @param stream
+     * @return proffered Triples with the context of this RDFStream
      */
-    public <T extends Triple> RdfStream(final T triple) {
-        this(Iterators.forArray(new Triple[] { triple }));
-    }
-
-    /**
-     * Constructor that begins the stream without any triples.
-     */
-    public RdfStream() {
-        this(NONE);
+    public <Tr extends Triple, T extends Spliterator<Tr>> RdfStream withThisContext(final T stream) {
+        return new RdfStream(stream).namespaces(namespaces()).topic(topic()).session(session());
     }
 
     /**
@@ -166,14 +157,6 @@ public class RdfStream extends ForwardingIterator<Triple> implements Stream<Trip
         return new RdfStream(stream).namespaces(namespaces()).topic(topic()).session(session());
     }
 
-    /**
-     * Returns a new empty {@link RdfStream} with the context of this RdfStream.
-     *
-     * @return an empty RdfStream with the context of this RDFStream
-     */
-    public RdfStream withThisContext() {
-        return new RdfStream().namespaces(namespaces()).topic(topic()).session(session());
-    }
 
     /**
      * Returns the proffered {@link Triple}s with the context of this RdfStream.
@@ -186,12 +169,21 @@ public class RdfStream extends ForwardingIterator<Triple> implements Stream<Trip
     }
 
     /**
+     * Returns the proffered {@link Triple}s with the context of this RdfStream.
+     *
+     * @param stream
+     * @return proffered Triples with the context of this RDFStream
+     */
+    public <Tr extends Triple, T extends Stream<Tr>> RdfStream withThisContext(final T stream) {
+        return new RdfStream(stream).namespaces(namespaces()).topic(topic()).session(session());
+    }
+
+    /**
      * @param newTriples Triples to add.
      * @return This object for continued use.
      */
     public RdfStream concat(final Iterator<? extends Triple> newTriples) {
-        triples = Iterators.concat(triples, newTriples);
-        return this;
+        return concat(new RdfStream(newTriples));
     }
 
     /**
@@ -199,9 +191,8 @@ public class RdfStream extends ForwardingIterator<Triple> implements Stream<Trip
      * @return This object for continued use.
      */
     public RdfStream concat(final RdfStream other) {
-        triples = Iterators.concat(triples, other);
         namespaces(other.namespaces());
-        return this;
+        return concat((Stream<? extends Triple>) other);
     }
 
     /**
@@ -209,26 +200,17 @@ public class RdfStream extends ForwardingIterator<Triple> implements Stream<Trip
      * @return This object for continued use.
      */
     public RdfStream concat(final Stream<? extends Triple> newTriples) {
-        triples = Iterators.concat(triples, newTriples.iterator());
+        triples = Stream.concat(triples, newTriples);
         return this;
     }
 
-    /**
-     * @param newTriple Triples to add.
-     * @return This object for continued use.
-     */
-    public <T extends Triple> RdfStream concat(final T newTriple) {
-        triples = Iterators.concat(triples, singletonIterator(newTriple));
-        return this;
-    }
 
     /**
      * @param newTriples Triples to add.
      * @return This object for continued use.
      */
     public <T extends Triple> RdfStream concat(@SuppressWarnings("unchecked") final T... newTriples) {
-        triples = Iterators.concat(triples, Iterators.forArray(newTriples));
-        return this;
+        return concat(stream(newTriples));
     }
 
     /**
@@ -236,28 +218,7 @@ public class RdfStream extends ForwardingIterator<Triple> implements Stream<Trip
      * @return This object for continued use.
      */
     public RdfStream concat(final Collection<? extends Triple> newTriples) {
-        triples = Iterators.concat(triples, newTriples.iterator());
-        return this;
-    }
-
-    /**
-     * As {@link Iterators#filter(Iterator, Predicate)} while maintaining context.
-     *
-     * @param predicate
-     * @return RdfStream
-     */
-    public RdfStream filter(final Predicate<? super Triple> predicate) {
-        return withThisContext(Iterators.filter(this, predicate));
-    }
-
-    /**
-     * As {@link Iterators#transform(Iterator, Function)}.
-     *
-     * @param f
-     * @return Iterator
-     */
-    public <ToType> Iterator<ToType> transform(final Function<? super Triple, ToType> f) {
-        return Iterators.transform(this, f);
+        return concat(newTriples.stream());
     }
 
     /**
@@ -317,15 +278,15 @@ public class RdfStream extends ForwardingIterator<Triple> implements Stream<Trip
 
     /**
      * WARNING! This method exhausts the RdfStream on which it is called!
+     * <p>
+     * This is a <a href="java.util.stream.Stream">terminal operation</a>.
      *
      * @return A {@link Model} containing the prefix mappings and triples in this stream of RDF
      */
     public Model asModel() {
         final Model model = createDefaultModel();
         model.setNsPrefixes(namespaces());
-        while (hasNext()) {
-            model.add(model.asStatement(next()));
-        }
+        triples.forEach(t -> model.add(model.asStatement(t)));
         return model;
     }
 
@@ -334,25 +295,9 @@ public class RdfStream extends ForwardingIterator<Triple> implements Stream<Trip
      * @return RDFStream
      */
     public static RdfStream fromModel(final Model model) {
-        final Iterator<Triple> triples = Iterators.transform(model.listStatements(), statement2triple);
-        return new RdfStream(triples).namespaces(model.getNsPrefixMap());
+        final ExtendedIterator<Triple> modelTriples = model.getGraph().find(ANY, ANY, ANY);
+        return new RdfStream(modelTriples).namespaces(model.getNsPrefixMap());
     }
-
-    private static Function<Statement, Triple> statement2triple = new Function<Statement, Triple>() {
-
-        @Override
-        public Triple apply(final Statement s) {
-            return s.asTriple();
-        }
-
-    };
-
-    @Override
-    protected Iterator<Triple> delegate() {
-        return triples;
-    }
-
-
 
     /**
      * @return Namespaces in scope for this stream.
@@ -361,21 +306,6 @@ public class RdfStream extends ForwardingIterator<Triple> implements Stream<Trip
         return namespaces;
     }
 
-    private static <T extends Triple> Function<T, Triple> cast() {
-        return new Function<T, Triple>() {
-
-            @Override
-            public Triple apply(final T prototriple) {
-                return prototriple;
-            }
-
-        };
-    }
-
-    /*
-     * We ignore duplicated triples for equality. (non-Javadoc)
-     * @see java.lang.Object#equals(java.lang.Object)
-     */
     @Override
     public boolean equals(final Object o) {
         if (o == null) {
@@ -388,308 +318,233 @@ public class RdfStream extends ForwardingIterator<Triple> implements Stream<Trip
             return false;
         }
         final RdfStream rdfo = (RdfStream) o;
-
-        final boolean triplesEqual =
-                equal(copyOf(rdfo.triples), copyOf(this.triples));
-
-        final boolean namespaceMappingsEqual =
-                equal(rdfo.namespaces(), this.namespaces());
-
-        final boolean topicEqual =
-                equal(rdfo.topic(), this.topic());
-
-        return triplesEqual && namespaceMappingsEqual && topicEqual;
-
+        if (!Objects.equals(rdfo.topic(), topic())) {
+            return false;
+        }
+        if (!Objects.equals(rdfo.namespaces(), namespaces())) {
+            return false;
+        }
+        if (!Objects.equals(rdfo.session(), session())) {
+            return false;
+        }
+        final HashSet<? extends Triple> myTriples = newHashSet(triples.iterator());
+        final HashSet<? extends Triple> theirTriples = newHashSet(rdfo.triples.iterator());
+        if (!myTriples.equals(theirTriples)) {
+            return false;
+        }
+        return true;
     }
 
     @Override
     public int hashCode() {
-        return hash(namespaces(), triples, topic());
+        return hash(namespaces(), triples, topic(), session());
     }
 
     @Override
-    public RdfStream iterator() {
-        return this;
+    @SuppressWarnings("unchecked")
+    public Iterator<Triple> iterator() {
+        return (Iterator<Triple>) triples.iterator();
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     public Spliterator<Triple> spliterator() {
-        return spliteratorUnknownSize(this, 0);
+        return (Spliterator<Triple>) triples.spliterator();
     }
 
     @Override
     public boolean isParallel() {
-        // TODO determine parallelism
-        return false;
+        return triples.isParallel();
     }
 
     @Override
     public RdfStream sequential() {
-        return this;
+        return withThisContext(triples.sequential());
     }
 
     @Override
     public RdfStream parallel() {
-        // TODO impl parallelism
-        throw new UnsupportedOperationException();
+        return withThisContext(triples.parallel());
     }
 
     @Override
     public RdfStream unordered() {
-        return this;
+        return withThisContext(triples.unordered());
     }
 
     @Override
     public RdfStream onClose(final Runnable closeHandler) {
-        closers.add(closeHandler);
-        return this;
+        return withThisContext(triples.onClose(closeHandler));
     }
 
     @Override
     public void close() {
-        closers.forEach(Runnable::run);
+        triples.close();
     }
 
     @Override
-    public Stream<Triple> filter(final java.util.function.Predicate<? super Triple> predicate) {
-        // TODO Auto-generated method stub
-        return null;
+    public RdfStream filter(final java.util.function.Predicate<? super Triple> p) {
+        return withThisContext(triples.filter(p));
     }
 
     @Override
     public <R> Stream<R> map(final java.util.function.Function<? super Triple, ? extends R> f) {
-        return streamIterator(transform(guavaFunction(f)));
-    }
-
-    private static <R> Stream<R> streamIterator(final Iterator<? extends R> transformedTriples) {
-        return stream(split(transformedTriples), false);
-    }
-
-    private static <R> Spliterator<R> split(final Iterator<? extends R> transformedTriples) {
-        return spliteratorUnknownSize(transformedTriples,0);
+        return triples.map(f);
     }
 
     @Override
     public IntStream mapToInt(final ToIntFunction<? super Triple> f) {
-        final PrimitiveIterator.OfInt ints = new PrimitiveIterator.OfInt() {
-
-            @Override
-            public boolean hasNext() {
-                return triples.hasNext();
-            }
-
-            @Override
-            public int nextInt() {
-                return f.applyAsInt(triples.next());
-            }
-        };
-        return intStream(spliteratorUnknownSize(ints, 0), false);
+        return triples.mapToInt(f);
     }
 
     @Override
     public LongStream mapToLong(final ToLongFunction<? super Triple> f) {
-        final PrimitiveIterator.OfLong longs = new PrimitiveIterator.OfLong() {
-
-            @Override
-            public boolean hasNext() {
-                return triples.hasNext();
-            }
-
-            @Override
-            public long nextLong() {
-                return f.applyAsLong(triples.next());
-            }
-        };
-        return longStream(spliteratorUnknownSize(longs, 0), false);
+        return triples.mapToLong(f);
     }
 
     @Override
     public DoubleStream mapToDouble(final ToDoubleFunction<? super Triple> f) {
-        final PrimitiveIterator.OfDouble longs = new PrimitiveIterator.OfDouble() {
-
-            @Override
-            public boolean hasNext() {
-                return triples.hasNext();
-            }
-
-            @Override
-            public double nextDouble() {
-                return f.applyAsDouble(triples.next());
-            }
-        };
-        return doubleStream(spliteratorUnknownSize(longs, 0), false);
+        return triples.mapToDouble(f);
     }
 
     @Override
-    public <R> Stream<R> flatMap(final java.util.function.Function<? super Triple, ? extends Stream<? extends R>> mapper) {
-        // TODO Auto-generated method stub
-        return null;
+    public <R> Stream<R> flatMap(final java.util.function.Function<? super Triple, ? extends Stream<? extends R>> f) {
+        return triples.flatMap(f);
     }
 
     @Override
-    public IntStream flatMapToInt(final java.util.function.Function<? super Triple, ? extends IntStream> mapper) {
-        // TODO Auto-generated method stub
-        return null;
+    public IntStream flatMapToInt(final java.util.function.Function<? super Triple, ? extends IntStream> f) {
+        return triples.flatMapToInt(f);
     }
 
     @Override
-    public LongStream flatMapToLong(final java.util.function.Function<? super Triple, ? extends LongStream> mapper) {
-        // TODO Auto-generated method stub
-        return null;
+    public LongStream flatMapToLong(final java.util.function.Function<? super Triple, ? extends LongStream> f) {
+        return triples.flatMapToLong(f);
     }
 
     @Override
-    public DoubleStream flatMapToDouble(final java.util.function.Function<? super Triple, ? extends DoubleStream> mapper) {
-        // TODO Auto-generated method stub
-        return null;
+    public DoubleStream flatMapToDouble(final java.util.function.Function<? super Triple, ? extends DoubleStream> f) {
+        return triples.flatMapToDouble(f);
     }
 
-    /**
-     * Requires drawing all distinct triples into heap.
-     *
-     * @see java.util.stream.Stream#distinct()
-     */
     @Override
     public RdfStream distinct() {
-        return withThisContext(newHashSet(triples));
+        return withThisContext(triples.distinct());
     }
 
     @Override
     public RdfStream sorted() {
-        throw new UnsupportedOperationException("There is no natural ordering on RDF triples!");
+        return withThisContext(triples.sorted());
     }
 
-    /** Requires drawing all triples into heap.
-     * @see java.util.stream.Stream#sorted(java.util.Comparator)
-     */
     @Override
     public RdfStream sorted(final Comparator<? super Triple> comparator) {
-        final TreeSet<Triple> sortedTriples = new TreeSet<>(comparator);
-        sortedTriples.addAll(newArrayList(triples));
-        return withThisContext(sortedTriples);
+        return withThisContext(triples.sorted(comparator));
     }
 
     @Override
-    public Stream<Triple> peek(final Consumer<? super Triple> action) {
-        // TODO Auto-generated method stub
-        return null;
+    public RdfStream peek(final Consumer<? super Triple> action) {
+        return withThisContext(triples.peek(action));
     }
 
     @Override
     public RdfStream limit(final long maxSize) {
-        return (maxSize == -1) ? this : withThisContext(Iterators.limit(triples, (int) maxSize));
+        return withThisContext(triples.limit(maxSize));
     }
 
     @Override
     public RdfStream skip(final long n) {
-        advance(triples, (int) n);
-        return this;
+        return withThisContext(triples.skip(n));
     }
 
     @Override
     public void forEach(final Consumer<? super Triple> action) {
-        // TODO impl parallelism
-        forEachOrdered(action);
+        triples.forEach(action);
     }
 
     @Override
     public void forEachOrdered(final Consumer<? super Triple> action) {
-        while (hasNext()) {
-            action.accept(next());
-        }
+        triples.forEachOrdered(action);
     }
 
     @Override
     public Triple[] toArray() {
-        return Iterators.toArray(triples, Triple.class);
+        return (Triple[]) triples.toArray();
     }
 
     @Override
     public <A> A[] toArray(final IntFunction<A[]> generator) {
-        // TODO Auto-generated method stub
-        return null;
+        return triples.toArray(generator);
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     public Triple reduce(final Triple identity, final BinaryOperator<Triple> accumulator) {
-        // TODO Auto-generated method stub
-        return null;
+        return ((Stream<Triple>) triples).reduce(identity, accumulator);
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     public Optional<Triple> reduce(final BinaryOperator<Triple> accumulator) {
-        // TODO Auto-generated method stub
-        return null;
+        return ((Stream<Triple>) triples).reduce(accumulator);
     }
 
     @Override
     public <U> U reduce(final U identity, final BiFunction<U, ? super Triple, U> accumulator, final BinaryOperator<U> combiner) {
-        // TODO Auto-generated method stub
-        return null;
+        return triples.reduce(identity, accumulator, combiner);
     }
 
     @Override
     public <R> R collect(final Supplier<R> supplier, final BiConsumer<R, ? super Triple> accumulator, final BiConsumer<R, R> combiner) {
-        // TODO Auto-generated method stub
-        return null;
+        return triples.collect(supplier, accumulator, combiner);
     }
 
     @Override
     public <R, A> R collect(final Collector<? super Triple, A, R> collector) {
-        // TODO Auto-generated method stub
-        return null;
+        return triples.collect(collector);
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     public Optional<Triple> min(final Comparator<? super Triple> comparator) {
-        try {
-            return Optional.of(Ordering.from(comparator).min(triples));
-        } catch (final NoSuchElementException e) {
-            return empty();
-        }
+        return (Optional<Triple>) triples.min(comparator);
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     public Optional<Triple> max(final Comparator<? super Triple> comparator) {
-        try {
-            return Optional.of(Ordering.from(comparator).max(triples));
-        } catch (final NoSuchElementException e) {
-            return empty();
-        }
+        return (Optional<Triple>) triples.max(comparator);
     }
 
     @Override
     public long count() {
-        return Long.MAX_VALUE;
+        return triples.count();
     }
 
     @Override
     public boolean anyMatch(final java.util.function.Predicate<? super Triple> p) {
-        return Iterators.any(triples, guavaPredicate(p));
+        return triples.anyMatch(p);
     }
 
     @Override
     public boolean allMatch(final java.util.function.Predicate<? super Triple> p) {
-        return Iterators.all(triples, guavaPredicate(p));
+        return triples.allMatch(p);
     }
 
     @Override
     public boolean noneMatch(final java.util.function.Predicate<? super Triple> p) {
-        return !anyMatch(p);
+        return triples.noneMatch(p);
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     public Optional<Triple> findFirst() {
-        try {
-            return Optional.of(triples.next());
-        } catch (final NoSuchElementException e) {
-            return empty();
-        }
+        return (Optional<Triple>) triples.findFirst();
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     public Optional<Triple> findAny() {
-        return findFirst();
+        return (Optional<Triple>) triples.findAny();
     }
-
 }
