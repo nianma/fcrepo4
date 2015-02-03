@@ -35,7 +35,6 @@ import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
-
 import java.io.ByteArrayInputStream;
 import java.util.Iterator;
 import java.util.List;
@@ -170,13 +169,10 @@ public class FedoraResourceImplIT extends AbstractIT {
 
         final FedoraResource object = nodeService.find(session, "/");
         final Graph graph = object.getTriples(subjects, RootRdfContext.class).asModel().getGraph();
-
         final Node s = createGraphSubjectNode(object);
 
-        Node p =
-            createURI(REPOSITORY_NAMESPACE
-                    + "repositoryJcrRepositoryVendorUrl");
-        Node o = createLiteral("http://www.modeshape.org");
+        Node p = createURI(REPOSITORY_NAMESPACE + "repository.jcr.repository.vendor");
+        Node o = createLiteral("JBoss, a division of Red Hat");
         assertTrue(graph.contains(s, p, o));
 
         p = createURI(REPOSITORY_NAMESPACE + "hasNodeType");
@@ -406,7 +402,7 @@ public class FedoraResourceImplIT extends AbstractIT {
     }
 
     @Test(expected = MalformedRdfException.class)
-    public void testAddMissingReference() throws RepositoryException, MalformedRdfException {
+    public void testAddMissingReference() throws MalformedRdfException {
         final FedoraResource object =
                 containerService.findOrCreate(session, "/testRefObject");
 

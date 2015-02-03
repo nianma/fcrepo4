@@ -67,7 +67,7 @@ public class NonRdfSourceDescriptionImpl extends FedoraResourceImpl implements N
      * @param node node to check
      */
     public static boolean hasMixin(final Node node) {
-        return isNonRdfSourceDescription.apply(node);
+        return isNonRdfSourceDescription.test(node);
     }
 
 }

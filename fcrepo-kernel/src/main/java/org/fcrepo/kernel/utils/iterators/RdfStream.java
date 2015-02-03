@@ -49,7 +49,6 @@ import java.util.stream.Stream;
 
 import javax.jcr.Session;
 
-import com.google.common.collect.Sets;
 import com.hp.hpl.jena.graph.Node;
 import com.hp.hpl.jena.graph.Triple;
 import com.hp.hpl.jena.rdf.model.Model;
@@ -286,7 +285,7 @@ public class RdfStream implements Stream<Triple> {
     public Model asModel() {
         final Model model = createDefaultModel();
         model.setNsPrefixes(namespaces());
-        triples.forEach(t -> model.add(model.asStatement(t)));
+        triples.forEachOrdered(t -> model.add(model.asStatement(t)));
         return model;
     }
 
