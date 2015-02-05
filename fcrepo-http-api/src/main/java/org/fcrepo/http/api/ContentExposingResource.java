@@ -18,7 +18,6 @@ package org.fcrepo.http.api;
 
 import static com.hp.hpl.jena.rdf.model.ModelFactory.createDefaultModel;
 import static com.hp.hpl.jena.vocabulary.RDF.type;
-import static java.util.Arrays.asList;
 import static javax.ws.rs.core.HttpHeaders.CACHE_CONTROL;
 import static javax.ws.rs.core.MediaType.APPLICATION_OCTET_STREAM_TYPE;
 import static javax.ws.rs.core.Response.ok;
@@ -45,7 +44,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.util.Arrays;
 import java.util.Date;
 import java.util.Iterator;
 import java.util.function.Predicate;

@@ -19,7 +19,6 @@ package org.fcrepo.kernel.utils.iterators;
 import static com.google.common.collect.Sets.newHashSet;
 import static com.hp.hpl.jena.graph.Node.ANY;
 import static com.hp.hpl.jena.rdf.model.ModelFactory.createDefaultModel;
-import static java.util.Arrays.stream;
 import static java.util.Objects.hash;
 
 import java.util.HashMap;
