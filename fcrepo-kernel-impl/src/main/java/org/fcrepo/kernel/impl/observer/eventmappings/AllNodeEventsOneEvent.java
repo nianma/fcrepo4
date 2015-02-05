@@ -16,6 +16,7 @@
 package org.fcrepo.kernel.impl.observer.eventmappings;
 
 import static com.google.common.collect.Multimaps.index;
+import static org.fcrepo.kernel.impl.utils.Streams.fromIterator;
 import static org.slf4j.LoggerFactory.getLogger;
 import static java.util.Arrays.asList;
 import static javax.jcr.observation.Event.PROPERTY_ADDED;
@@ -24,6 +25,7 @@ import static javax.jcr.observation.Event.PROPERTY_REMOVED;
 
 import java.util.Iterator;
 import java.util.List;
+import java.util.stream.Stream;
 
 import javax.jcr.RepositoryException;
 import javax.jcr.observation.Event;
@@ -51,30 +53,28 @@ public class AllNodeEventsOneEvent implements InternalExternalEventMapper {
     private static final List<Integer> PROPERTY_EVENT_TYPES = asList(PROPERTY_ADDED, PROPERTY_CHANGED,
             PROPERTY_REMOVED);
 
+    private final static Logger log = getLogger(AllNodeEventsOneEvent.class);
+
     /**
      * Extracts the node identifier from a JCR {@link Event}.
      */
-    private static final Function<Event, String> EXTRACT_NODE_ID = new Function<Event, String>() {
-
-        @Override
-        public String apply(final Event ev) {
-            try {
-                final String id = ev.getIdentifier();
-                log.debug("Sorting an event by identifier: {}", id);
-                return id;
-            } catch (final RepositoryException e) {
-                throw new RepositoryRuntimeException(e);
-            }
+    private static final Function<Event, String> EXTRACT_NODE_ID = ev -> {
+        try {
+            final String id = ev.getIdentifier();
+            log.trace("Sorting an event by identifier: {}", id);
+            return id;
+        } catch (final RepositoryException e) {
+            throw new RepositoryRuntimeException(e);
         }
     };
 
     @Override
-    public Iterator<FedoraEvent> apply(final Iterator<Event> events) {
+    public Stream<FedoraEvent> apply(final Stream<Event> events) {
 
-        return new Iterator<FedoraEvent>() {
+        final Iterator<FedoraEvent> iterator =  new Iterator<FedoraEvent>() {
 
             // sort JCR events into a Multimap keyed by the node ID involved
-            final Multimap<String, Event> sortedEvents = index(events, EXTRACT_NODE_ID);
+            final Multimap<String, Event> sortedEvents = index(events.iterator(), EXTRACT_NODE_ID);
 
             final Iterator<String> nodeIds = sortedEvents.keySet().iterator();
 
@@ -104,12 +104,6 @@ public class AllNodeEventsOneEvent implements InternalExternalEventMapper {
                 return fedoraEvent;
             }
 
-            @Override
-            public void remove() {
-                // the underlying Multimap is immutable anyway
-                throw new UnsupportedOperationException();
-            }
-
             private void addProperty( final FedoraEvent fedoraEvent, final Event ev ) {
                 try {
                     if (PROPERTY_EVENT_TYPES.contains(ev.getType())) {
@@ -123,7 +117,7 @@ public class AllNodeEventsOneEvent implements InternalExternalEventMapper {
                 }
             }
         };
+        return fromIterator(iterator);
     }
 
-    private final static Logger log = getLogger(AllNodeEventsOneEvent.class);
-}
+    }
