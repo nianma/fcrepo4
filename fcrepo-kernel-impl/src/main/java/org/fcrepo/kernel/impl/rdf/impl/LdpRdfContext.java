@@ -28,11 +28,11 @@ import org.fcrepo.kernel.models.FedoraResource;
 import org.fcrepo.kernel.identifiers.IdentifierConverter;
 import org.slf4j.Logger;
 
-import com.hp.hpl.jena.graph.Triple;
 import com.hp.hpl.jena.rdf.model.Resource;
 
 /**
  * @author cabeer
+ * @author ajs6f
  * @since 9/16/14
  */
 public class LdpRdfContext extends NodeRdfContext {
@@ -49,27 +49,15 @@ public class LdpRdfContext extends NodeRdfContext {
                          final IdentifierConverter<Resource, FedoraResource> idTranslator) {
         super(resource, idTranslator);
 
-        concat(typeContext());
+        concat(create(subject(), type.asNode(), RDF_SOURCE.asNode()));
 
         if (resource instanceof Container) {
-            concat(containerContext());
+            concat(create(subject(), type.asNode(), CONTAINER.asNode()));
 
             if (!resource.hasType(FEDORA_CONTAINER)) {
-                concat(defaultContainerContext());
+                concat(create(subject(), type.asNode(), BASIC_CONTAINER.asNode()));
             }
         }
 
-    }
-
-    private Triple typeContext() {
-        return create(subject(), type.asNode(), RDF_SOURCE.asNode());
-    }
-
-    private Triple containerContext() {
-        return create(subject(), type.asNode(), CONTAINER.asNode());
-    }
-
-    private Triple defaultContainerContext() {
-        return create(subject(), type.asNode(), BASIC_CONTAINER.asNode());
     }
 }
