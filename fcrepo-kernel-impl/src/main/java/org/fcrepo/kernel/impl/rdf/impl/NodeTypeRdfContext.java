@@ -21,12 +21,10 @@ import static com.hp.hpl.jena.vocabulary.RDF.type;
 import static com.hp.hpl.jena.vocabulary.RDFS.Class;
 import static com.hp.hpl.jena.vocabulary.RDFS.label;
 import static com.hp.hpl.jena.vocabulary.RDFS.subClassOf;
-import static java.util.Arrays.stream;
 import static org.fcrepo.kernel.impl.rdf.impl.mappings.ItemDefinitionToTriples.getResource;
-import static org.fcrepo.kernel.impl.utils.Streams.fromIterator;
-import static org.fcrepo.kernel.impl.utils.UncheckedFunction.uncheck;
 import static org.slf4j.LoggerFactory.getLogger;
 
+import java.util.Arrays;
 import java.util.Iterator;
 import java.util.function.Predicate;
 
@@ -35,7 +33,6 @@ import com.hp.hpl.jena.graph.Triple;
 
 import org.fcrepo.kernel.impl.rdf.impl.mappings.NodeDefinitionToTriples;
 import org.fcrepo.kernel.impl.rdf.impl.mappings.PropertyDefinitionToTriples;
-import org.fcrepo.kernel.impl.utils.UncheckedConsumer;
 import org.fcrepo.kernel.utils.iterators.RdfStream;
 
 import org.slf4j.Logger;
@@ -79,7 +76,7 @@ public class NodeTypeRdfContext extends RdfStream {
      */
     public NodeTypeRdfContext(final Iterator<NodeType> nodeTypeIterator) {
         super();
-        fromIterator(nodeTypeIterator).forEach(UncheckedConsumer.uncheck(nt ->concat(new NodeTypeRdfContext(nt))));
+        nodeTypeIterator.forEachRemaining(nt -> concat(new NodeTypeRdfContext(nt)));
     }
 
     /**
@@ -87,21 +84,18 @@ public class NodeTypeRdfContext extends RdfStream {
      * definitions, and property definitions of the type as RDFS triples.
      *
      * @param nodeType
-     * @throws RepositoryException
      */
-    public NodeTypeRdfContext(final NodeType nodeType)
-        throws RepositoryException {
+    public NodeTypeRdfContext(final NodeType nodeType) {
         super();
-
         final Node nodeTypeResource = getResource(nodeType).asNode();
         final String nodeTypeName = nodeType.getName();
 
         LOGGER.trace("Adding triples for nodeType: {} with URI: {}", nodeTypeName, nodeTypeResource.getURI());
-        concat(stream(nodeType.getDeclaredSupertypes()).map(uncheck(n ->
-                create(nodeTypeResource, subClassOf.asNode(), getResource(n).asNode()))));
-        concat(stream(nodeType.getDeclaredChildNodeDefinitions()).filter(isWildcardResidualDefinition.negate())
+        concat(Arrays.stream(nodeType.getDeclaredSupertypes()).map(n ->
+                create(nodeTypeResource, subClassOf.asNode(), getResource(n).asNode())));
+        concat(Arrays.stream(nodeType.getDeclaredChildNodeDefinitions()).filter(isWildcardResidualDefinition.negate())
                 .flatMap(new NodeDefinitionToTriples(nodeTypeResource)));
-        concat(stream(nodeType.getDeclaredPropertyDefinitions()).filter(isWildcardResidualDefinition.negate())
+        concat(Arrays.stream(nodeType.getDeclaredPropertyDefinitions()).filter(isWildcardResidualDefinition.negate())
                 .flatMap(new PropertyDefinitionToTriples(nodeTypeResource)));
         concat(create(nodeTypeResource, type.asNode(), Class.asNode()), create(
                 nodeTypeResource, label.asNode(), createLiteral(nodeTypeName)));
