@@ -24,6 +24,7 @@ import org.fcrepo.kernel.exception.RepositoryRuntimeException;
 import org.fcrepo.kernel.identifiers.IdentifierConverter;
 import org.fcrepo.kernel.impl.rdf.converters.ValueConverter;
 import org.fcrepo.kernel.impl.rdf.impl.mappings.PropertyValueIterator;
+
 import org.slf4j.Logger;
 
 import javax.jcr.Node;
@@ -39,9 +40,7 @@ import java.util.stream.Stream;
 import static com.hp.hpl.jena.graph.NodeFactory.createURI;
 import static com.hp.hpl.jena.graph.Triple.create;
 import static com.hp.hpl.jena.rdf.model.ResourceFactory.createResource;
-
 import static java.util.stream.Stream.empty;
-
 import static org.fcrepo.kernel.FedoraJcrTypes.LDP_BASIC_CONTAINER;
 import static org.fcrepo.kernel.FedoraJcrTypes.LDP_DIRECT_CONTAINER;
 import static org.fcrepo.kernel.FedoraJcrTypes.LDP_HAS_MEMBER_RELATION;
@@ -52,7 +51,8 @@ import static org.fcrepo.kernel.RdfLexicon.LDP_MEMBER;
 import static org.fcrepo.kernel.RdfLexicon.MEMBER_SUBJECT;
 import static org.fcrepo.kernel.impl.identifiers.NodeResourceConverter.nodeConverter;
 import static org.fcrepo.kernel.impl.rdf.converters.PropertyConverter.getPropertyNameFromPredicate;
-import static org.fcrepo.kernel.impl.utils.Streams.fromIterator;
+import static org.fcrepo.kernel.utils.Streams.fromIterator;
+import static org.fcrepo.kernel.utils.UncheckedFunction.uncheck;
 import static org.slf4j.LoggerFactory.getLogger;
 
 /**
@@ -88,14 +88,8 @@ public class LdpContainerRdfContext extends NodeRdfContext {
         }
     };
 
-    private final Function<Property, Stream<Triple>> property2triples = property -> {
-        try {
-            final FedoraResource resource = nodeConverter.convert(property.getParent());
-            return memberRelations(resource);
-        } catch (final RepositoryException e) {
-            throw new RepositoryRuntimeException(e);
-        }
-    };
+    private final Function<Property, Stream<Triple>> property2triples = uncheck(p -> memberRelations(nodeConverter
+            .convert(p.getParent())));
 
     /**
      * Get the member relations assert on the subject by the given node
@@ -129,39 +123,35 @@ public class LdpContainerRdfContext extends NodeRdfContext {
 
         final Iterator<FedoraResource> memberNodesIterator = container.getChildren();
         final Stream<FedoraResource> memberNodes = fromIterator(memberNodesIterator);
-        return memberNodes.flatMap(new Function<FedoraResource, Stream<Triple>>() {
+        return memberNodes.flatMap(child -> {
 
-            @Override
-            public Stream<Triple> apply(final FedoraResource child) {
-
-                try {
-                    final com.hp.hpl.jena.graph.Node childSubject;
-                    if (child instanceof NonRdfSourceDescription) {
-                        childSubject = translator().reverse()
-                                .convert(((NonRdfSourceDescription) child).getDescribedResource())
-                                .asNode();
-                    } else {
-                        childSubject = translator().reverse().convert(child).asNode();
-                    }
-
-                    if (insertedContainerProperty.equals(MEMBER_SUBJECT.getURI())) {
-                        return Stream.of(create(subject(), memberRelation, childSubject));
-                    }
-                    final String insertedContentProperty = getPropertyNameFromPredicate(resource().getNode(),
-                            createResource(insertedContainerProperty),  null);
-
-                    if (!child.hasProperty(insertedContentProperty)) {
-                        return empty();
-                    }
-
-                    final PropertyValueIterator valuesIterator =
-                            new PropertyValueIterator(child.getProperty(insertedContentProperty));
-                    final Stream<Value> values = fromIterator(valuesIterator);
-                    return values.map(v -> create(subject(), memberRelation, new ValueConverter(session(),
-                            translator()).convert(v).asNode()));
-                } catch (final RepositoryException e) {
-                    throw new RepositoryRuntimeException(e);
+            try {
+                final com.hp.hpl.jena.graph.Node childSubject;
+                if (child instanceof NonRdfSourceDescription) {
+                    childSubject = translator().reverse()
+                            .convert(((NonRdfSourceDescription) child).getDescribedResource())
+                            .asNode();
+                } else {
+                    childSubject = translator().reverse().convert(child).asNode();
                 }
+
+                if (insertedContainerProperty.equals(MEMBER_SUBJECT.getURI())) {
+                    return Stream.of(create(subject(), memberRelation, childSubject));
+                }
+                final String insertedContentProperty = getPropertyNameFromPredicate(resource().getNode(),
+                        createResource(insertedContainerProperty), null);
+
+                if (!child.hasProperty(insertedContentProperty)) {
+                    return empty();
+                }
+
+                final PropertyValueIterator valuesIterator =
+                        new PropertyValueIterator(child.getProperty(insertedContentProperty));
+                final Stream<Value> values = fromIterator(valuesIterator);
+                return values.map(v -> create(subject(), memberRelation, new ValueConverter(session(),
+                        translator()).convert(v).asNode()));
+            } catch (final RepositoryException e) {
+                throw new RepositoryRuntimeException(e);
             }
         });
     }

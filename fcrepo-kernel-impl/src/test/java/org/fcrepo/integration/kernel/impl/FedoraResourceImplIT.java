@@ -29,12 +29,15 @@ import static org.fcrepo.kernel.FedoraJcrTypes.JCR_LASTMODIFIED;
 import static org.fcrepo.kernel.RdfLexicon.DC_TITLE;
 import static org.fcrepo.kernel.RdfLexicon.RDF_NAMESPACE;
 import static org.fcrepo.kernel.RdfLexicon.REPOSITORY_NAMESPACE;
+import static org.fcrepo.kernel.utils.Streams.fromIterator;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.slf4j.LoggerFactory.getLogger;
+
 import java.io.ByteArrayInputStream;
 import java.util.Iterator;
 import java.util.List;
@@ -78,6 +81,7 @@ import org.fcrepo.kernel.utils.iterators.RdfStream;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
+import org.slf4j.Logger;
 import org.springframework.test.context.ContextConfiguration;
 
 import com.hp.hpl.jena.graph.Node;
@@ -116,6 +120,8 @@ public class FedoraResourceImplIT extends AbstractIT {
     private Session session;
 
     private DefaultIdentifierTranslator subjects;
+
+    private static final Logger log = getLogger(FedoraResourceImplIT.class);
 
     @Before
     public void setUp() throws RepositoryException {
@@ -603,8 +609,7 @@ public class FedoraResourceImplIT extends AbstractIT {
         final String pid = getRandomPid();
         final Container container = containerService.findOrCreate(session, "/" + pid);
         final FedoraResource resource = containerService.findOrCreate(session, "/" + pid + "/a/b/c/d");
-
-        assertEquals(resource, container.getChildren().next());
+        assertTrue(fromIterator(container.getChildren()).anyMatch(resource::equals));
     }
 
     @Test

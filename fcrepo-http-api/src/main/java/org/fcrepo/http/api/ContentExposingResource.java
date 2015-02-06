@@ -37,7 +37,7 @@ import static org.fcrepo.kernel.RdfLexicon.INDIRECT_CONTAINER;
 import static org.fcrepo.kernel.RdfLexicon.LDP_NAMESPACE;
 import static org.fcrepo.kernel.RdfLexicon.isManagedNamespace;
 import static org.fcrepo.kernel.impl.rdf.ManagedRdf.isManagedTriple;
-import static org.fcrepo.kernel.impl.utils.Streams.fromIterator;
+import static org.fcrepo.kernel.utils.Streams.fromIterator;
 import static org.slf4j.LoggerFactory.getLogger;
 
 import java.io.IOException;
