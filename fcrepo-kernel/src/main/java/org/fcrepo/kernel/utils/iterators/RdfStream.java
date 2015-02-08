@@ -35,7 +35,6 @@ import com.google.common.collect.Iterators;
 import com.hp.hpl.jena.graph.Node;
 import com.hp.hpl.jena.graph.Triple;
 import com.hp.hpl.jena.rdf.model.Model;
-import com.hp.hpl.jena.util.iterator.ExtendedIterator;
 
 /**
  * A stream of RDF triples along with some useful context.
@@ -191,7 +190,7 @@ public class RdfStream extends SpliteratorStream<Triple, RdfStream> {
      * @return RDFStream
      */
     public static RdfStream fromModel(final Model model) {
-        final ExtendedIterator<Triple> modelTriples = model.getGraph().find(ANY, ANY, ANY);
+        final Iterator<Triple> modelTriples = model.getGraph().find(ANY, ANY, ANY);
         return new RdfStream(modelTriples).namespaces(model.getNsPrefixMap());
     }
 

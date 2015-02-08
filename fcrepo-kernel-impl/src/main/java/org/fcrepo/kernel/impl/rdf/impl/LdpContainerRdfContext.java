@@ -20,7 +20,8 @@ import com.hp.hpl.jena.rdf.model.Resource;
 
 import org.fcrepo.kernel.models.NonRdfSourceDescription;
 import org.fcrepo.kernel.models.FedoraResource;
-import org.fcrepo.kernel.exception.RepositoryRuntimeException;
+import org.fcrepo.kernel.utils.UncheckedFunction;
+import org.fcrepo.kernel.utils.UncheckedPredicate;
 import org.fcrepo.kernel.identifiers.IdentifierConverter;
 import org.fcrepo.kernel.impl.rdf.converters.ValueConverter;
 import org.fcrepo.kernel.impl.rdf.impl.mappings.PropertyValueIterator;
@@ -79,14 +80,10 @@ public class LdpContainerRdfContext extends NodeRdfContext {
         concat(properties.flatMap(property2triples));
     }
 
-    private static final Predicate<Property> isContainer = property -> {
-        try {
+    private static final Predicate<Property> isContainer = UncheckedPredicate.uncheck(property -> {
             final Node container = property.getParent();
             return container.isNodeType(LDP_DIRECT_CONTAINER) || container.isNodeType(LDP_INDIRECT_CONTAINER);
-        } catch (final RepositoryException e) {
-            throw new RepositoryRuntimeException(e);
-        }
-    };
+    });
 
     private final Function<Property, Stream<Triple>> property2triples = uncheck(p -> memberRelations(nodeConverter
             .convert(p.getParent())));
@@ -123,36 +120,31 @@ public class LdpContainerRdfContext extends NodeRdfContext {
 
         final Iterator<FedoraResource> memberNodesIterator = container.getChildren();
         final Stream<FedoraResource> memberNodes = fromIterator(memberNodesIterator);
-        return memberNodes.flatMap(child -> {
-
-            try {
-                final com.hp.hpl.jena.graph.Node childSubject;
-                if (child instanceof NonRdfSourceDescription) {
-                    childSubject = translator().reverse()
-                            .convert(((NonRdfSourceDescription) child).getDescribedResource())
-                            .asNode();
-                } else {
-                    childSubject = translator().reverse().convert(child).asNode();
-                }
-
-                if (insertedContainerProperty.equals(MEMBER_SUBJECT.getURI())) {
-                    return Stream.of(create(subject(), memberRelation, childSubject));
-                }
-                final String insertedContentProperty = getPropertyNameFromPredicate(resource().getNode(),
-                        createResource(insertedContainerProperty), null);
-
-                if (!child.hasProperty(insertedContentProperty)) {
-                    return empty();
-                }
-
-                final PropertyValueIterator valuesIterator =
-                        new PropertyValueIterator(child.getProperty(insertedContentProperty));
-                final Stream<Value> values = fromIterator(valuesIterator);
-                return values.map(v -> create(subject(), memberRelation, new ValueConverter(session(),
-                        translator()).convert(v).asNode()));
-            } catch (final RepositoryException e) {
-                throw new RepositoryRuntimeException(e);
+        return memberNodes.flatMap(UncheckedFunction.uncheck(child -> {
+            final com.hp.hpl.jena.graph.Node childSubject;
+            if (child instanceof NonRdfSourceDescription) {
+                childSubject = translator().reverse()
+                        .convert(((NonRdfSourceDescription) child).getDescribedResource())
+                        .asNode();
+            } else {
+                childSubject = translator().reverse().convert(child).asNode();
             }
-        });
+
+            if (insertedContainerProperty.equals(MEMBER_SUBJECT.getURI())) {
+                return Stream.of(create(subject(), memberRelation, childSubject));
+            }
+            final String insertedContentProperty = getPropertyNameFromPredicate(resource().getNode(),
+                    createResource(insertedContainerProperty), null);
+
+            if (!child.hasProperty(insertedContentProperty)) {
+                return empty();
+            }
+
+            final PropertyValueIterator valuesIterator =
+                    new PropertyValueIterator(child.getProperty(insertedContentProperty));
+            final Stream<Value> values = fromIterator(valuesIterator);
+            return values.map(v -> create(subject(), memberRelation, new ValueConverter(session(),
+                    translator()).convert(v).asNode()));
+        }));
     }
 }
