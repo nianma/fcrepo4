@@ -24,7 +24,7 @@ import org.fcrepo.kernel.utils.UncheckedFunction;
 import org.fcrepo.kernel.utils.UncheckedPredicate;
 import org.fcrepo.kernel.identifiers.IdentifierConverter;
 import org.fcrepo.kernel.impl.rdf.converters.ValueConverter;
-import org.fcrepo.kernel.impl.rdf.impl.mappings.PropertyValueIterator;
+import org.fcrepo.kernel.impl.rdf.impl.mappings.PropertyValueStream;
 
 import org.slf4j.Logger;
 
@@ -140,9 +140,7 @@ public class LdpContainerRdfContext extends NodeRdfContext {
                 return empty();
             }
 
-            final PropertyValueIterator valuesIterator =
-                    new PropertyValueIterator(child.getProperty(insertedContentProperty));
-            final Stream<Value> values = fromIterator(valuesIterator);
+            final Stream<Value> values = new PropertyValueStream(child.getProperty(insertedContentProperty));
             return values.map(v -> create(subject(), memberRelation, new ValueConverter(session(),
                     translator()).convert(v).asNode()));
         }));
